@@ -160,6 +160,12 @@ function reward(mdp::game, s::UInt)
     return s.reward
 end
 
+function getreward(planner, s::UInt)
+    s = get(planner.mdp.statedict, s, state(s))
+    return s.reward
+end
+
+
 function getmove(mdp::game, s::UInt)
     s = get(mdp.statedict, s, state(s))
     return s.move

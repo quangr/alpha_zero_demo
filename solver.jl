@@ -58,6 +58,7 @@ mutable struct MCTSSolver
     timer::Function
     policy::Policy
     move::Int
+    debug::Bool
 end
 
 function MCTSSolver(;n_iterations::Int64=100,
@@ -72,11 +73,12 @@ function MCTSSolver(;n_iterations::Int64=100,
     enable_tree_vis::Bool=false,
     timer=() -> 1e-9 * time_ns(),
     policy=nothing,
-    move=0
+    move=0,
+    debug=false
     )
 return MCTSSolver(n_iterations, max_time, depth, exploration_constant, rng, #estimate_value, 
 init_Q, init_N,
-     reuse_tree, enable_tree_vis, timer,policy,move)
+     reuse_tree, enable_tree_vis, timer,policy,move,debug)
 end
 
 function plan!(planner, s)
@@ -138,8 +140,12 @@ function action_info(p, s)
     end
     # @show probs
     probs=probs/sum(probs)
+    Q=zeros(9)
+    for sanode in children(StateNode(tree, s))
+        Q[action(sanode)]=q(sanode)
+    end
     # best = best_sanode_Q(StateNode(tree, s))
-    return sample(Weights(probs)), (tree=tree,),probs
+    return sample(Weights(probs)), (tree=tree,Q=Q),probs
 end
 
 
@@ -157,9 +163,18 @@ function simulate(planner, node::StateNode, depth::Int64)
     rng = planner.rng
     s = state(node)
     tree = node.tree
+    if(planner.solver.debug)
+    printboard(s)
+    end
     # once depth is zero return
-    if isterminal(planner.mdp, s)||depth == 0
-	return getvalue(planner,s)
+    if isterminal(planner.mdp, s)
+        # r=planner.solver.move==0 ? getreward(planner,s) : -getreward(planner,s)
+        # # printboard(s)
+        # # @show r
+    	return getreward(planner,s)!=0 ? 1 : 0
+    elseif depth == 0
+        # println(s,"depth")
+        return getvalue(planner,s)
     end
 
     # pick action using UCT
@@ -168,22 +183,37 @@ function simulate(planner, node::StateNode, depth::Int64)
 
     # transition to a new state
     sp, r,done = step(mdp, s, action(sanode))
-    spid = get(tree.state_map, sp, 0)
-    if spid == 0
+    spid = get(tree.state_map, sp, -1)
+    if spid == -1
         spn = insert_node!(tree, planner, sp)
         spid = spn.id
-        q = r + getvalue(planner,s)
+        # print("spid")
+        # @show sp
+        if isterminal(planner.mdp, sp)
+            # r=planner.solver.move==0 ? getreward(planner,sp) : -getreward(planner,sp)
+            # printboard(sp)
+            # @show r
+            # @show getreward(planner,sp)
+            # @show planner.solver.move
+            q=getreward(planner,sp)!=0 ? 1 : 0
+        else
+            # println(sp,"spid")
+            @assert r==0
+            q=getvalue(planner,sp)
+        end
     else
-        q = r + simulate(planner, StateNode(tree, spid) , depth-1)
+        q = simulate(planner, StateNode(tree, spid) , depth-1)
     end
     # if planner.solver.enable_tree_vis
     #     record_visit!(tree, said, spid)
     # end
-
+    # printboard(sp)
+    # @show planner.solver.move
+    # @show q
     tree.total_n[node.id] += 1
     tree.n[said] += 1
     tree.q[said] += (q - tree.q[said]) / tree.n[said] # moving average of Q value
-    return q
+    return -q
 end
 
 
@@ -213,6 +243,9 @@ function build_tree(planner, s)
         if timer() - start_s >= planner.solver.max_time
             break
         end
+    end
+    if(planner.solver.debug)
+    @show tree 
     end
     return tree
 end
@@ -249,9 +282,12 @@ function best_sanode_UCB(snode::StateNode, c::Float64)
     best_UCB = -Inf
     best = first(children(snode))
     sn = total_n(snode)
+    # @show sn
     for sanode in children(snode)
-        
         UCB = q(sanode) + c*p(sanode)*sqrt(sn)/(1+n(sanode))		
+        # @show n(sanode)
+        # @show q(sanode)
+        # @show UCB
         if isnan(UCB)
             @show sn
             @show n(sanode)

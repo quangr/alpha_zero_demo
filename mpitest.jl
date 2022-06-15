@@ -44,9 +44,11 @@ function getnetwork(planner,s::UInt)
     t,len=treetovector(s)
     # printboard(s)
     if (len%2)==planner.solver.move
+        # println("get policy 0 for",t)
         return reqvalue(planner.solver.policy,t,0)
         # println("now policy 0")
     else
+        # println("get policy 1 for",t)
         return reqvalue(planner.solver.policy,t,1)
     end
 end
@@ -56,6 +58,20 @@ end
 sigmoid(z) = 1.0 ./ (1.0 .+ exp.(-z))
 
 
+# function getvalue(planner,s::UInt)
+#     t,len=treetovector(s)
+#     # printboard(s)
+#     if (len%2)==planner.solver.move
+#         # println("get policy 0 for",t)
+#         res=reqvalue(planner.solver.policy,t,0)
+#         # println("now policy 0")
+#         return 2*sigmoid(res[1])-1
+#     else
+#         # println("get policy 1 for",t)
+#         res=reqvalue(planner.solver.policy,t,1)
+#         return -(2*sigmoid(res[1])-1)
+#     end
+# end
 function getvalue(planner,s::UInt)
     return 2*sigmoid(getnetwork(planner,s)[1])-1
 end
@@ -72,7 +88,7 @@ function train(X,y)
     #     mse+penalty
     # end
     # p=planner.solver.policy
-    @show X[1:3]
+    # @show X[1:3]
     X=hcat(map(x->MCTS.treetovector(convert(UInt,x))[1],X)...)
     y=hcat(y...)
     MPI.Send(Float32.(X), 1, 1, comm)
